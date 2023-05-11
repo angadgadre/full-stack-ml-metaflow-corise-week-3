@@ -9,7 +9,10 @@ class DivideByZeroFlow(FlowSpec):
 
     @step
     def divide(self):
-        self.res = 10 / self.input  # A
+        try:
+            self.res = 10 / self.input  # A
+        except ZeroDivisionError:
+            self.res = None
         self.next(self.join)
 
     @step
