@@ -12,12 +12,24 @@ class TaxiFarePrediction(FlowSpec):
 
     def transform_features(self, df):
 
-        # TODO: 
-            # Try to complete tasks 2 and 3 with this function doing nothing like it currently is.
-            # Understand what is happening.
-            # Revisit task 1 and think about what might go in this function.
-            
-        return df
+        obviously_bad_data_filters = [
+
+        df.fare_amount > 0,         # fare_amount in US Dollars
+        df.trip_distance <= 100,    # trip_distance in miles
+        df.trip_distance > 0,
+
+        # done: add some logic to filter out what you decide is bad data!
+        # TIP: Don't spend too much time on this step for this project though, it practice it is a never-ending process.
+        df.passenger_count > 0,
+        ~df.trip_distance.isnull()
+        ]
+
+        for f in obviously_bad_data_filters:
+            _df = df[f]
+        
+        _df = df.filter(items=['trip_distance', 'tpep_pickup_datetime', 'tpep_dropoff_datetime', 'passenger_count', 'fare_amount', 'total_amount', 'tip_amount', 'congestion_surcharge', 'airport_fee', 'tolls_amount', 'payment_type', 'mta_tax'])
+
+        return _df
 
     @step
     def start(self):
