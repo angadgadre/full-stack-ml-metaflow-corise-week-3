@@ -148,11 +148,14 @@ class TaxiFarePrediction(FlowSpec):
         from sklearn.ensemble import HistGradientBoostingRegressor
         from sklearn.pipeline import Pipeline
         from sklearn.compose import ColumnTransformer
+        from sklearn.impute import SimpleImputer
 
+        imputer = SimpleImputer(strategy='most_frequent')
         # done: Play around with the model if you are feeling it.
         # self.model = LinearRegression()
         self.pipeline = Pipeline([
             ('preprocessor', self.preprocessor),
+            ('imputer', imputer)
             ('model', HistGradientBoostingRegressor())    
         ])
 
