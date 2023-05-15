@@ -12,6 +12,11 @@ class TaxiFarePrediction(FlowSpec):
 
     def transform_features(self, df):
 
+        from sklearn.pipeline import Pipeline
+        from sklearn.compose import ColumnTransformer
+        from sklearn.preprocessing import OneHotEncoder
+        from sklearn.preprocessing import MinMaxScaler
+
         obviously_bad_data_filters = [
 
         df.fare_amount > 0,         # fare_amount in US Dollars
@@ -26,35 +31,136 @@ class TaxiFarePrediction(FlowSpec):
 
         for f in obviously_bad_data_filters:
             _df = df[f]
-        
-        _df = df.filter(items=['trip_distance', 'tpep_pickup_datetime', 'tpep_dropoff_datetime', 'passenger_count', 'fare_amount', 'total_amount', 'tip_amount', 'congestion_surcharge', 'airport_fee', 'tolls_amount', 'payment_type', 'mta_tax'])
 
+        # done: 
+            # Try to complete tasks 2 and 3 with this function doing nothing like it currently is.
+            # Understand what is happening.
+            # Revisit task 1 and think about what might go in this function.
+        
+        # shortlist the features worth engineering
+        _df = df.filter(items=['trip_distance', 'hour', 'passenger_count', 'fare_amount', 'total_amount', 'tip_amount', 'congestion_surcharge', 'airport_fee', 'tolls_amount', 'payment_type', 'mta_tax'])
+        # Numerical features: 
+        _ = _df.select_dtypes(include=['int64', 'float64']).columns
+        
+        
+        # categorical features: airport_fee, payment_type, mta_tax
+        _df['airport_fee'] = _df['airport_fee'].astype(str)
+        _df['payment_type'] = _df['payment_type'].astype(str)
+        _df['mta_tax'] = _df['mta_tax'].astype(str)
+
+        # boolean features: none
+
+        # datetime features: not doing at the moment    
         return _df
 
+    @catch(var="missing_data")
+    @retry(times=2)
+    @timeout(seconds=59)
     @step
     def start(self):
 
         import pandas as pd
         from sklearn.model_selection import train_test_split
+        from sklearn.linear_model import LinearRegression
+        from sklearn.metrics import r2_score
+        from sklearn.metrics import roc_auc_score
+
+        from sklearn.pipeline import Pipeline
+        from sklearn.compose import ColumnTransformer
+        from sklearn.preprocessing import OneHotEncoder
+        from sklearn.preprocessing import MinMaxScaler
+
 
         self.df = self.transform_features(pd.read_parquet(self.data_url))
 
         # NOTE: we are split into training and validation set in the validation step which uses cross_val_score.
         # This is a simple/naive way to do this, and is meant to keep this example simple, to focus learning on deploying Metaflow flows.
         # In practice, you want split time series data in more sophisticated ways and run backtests. 
-        self.X = self.df["trip_distance"].values.reshape(-1, 1)
-        self.y = self.df["total_amount"].values
+        
+        SEED=89
+
+        def train_validation_test_split(
+            X, y, train_ratio: float, validation_ratio: float, test_ratio: float
+        ):
+            # Split up dataset into train and test, of which we split up the test.
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=(1 - train_ratio), random_state=SEED
+            )
+
+            # Split up test into two (validation and test).
+            X_val, X_test, y_val, y_test = train_test_split(
+                X_test,
+                y_test,
+                test_size=(test_ratio / (test_ratio + validation_ratio)),
+                random_state=SEED,
+            )
+
+            # Return the splits
+            return X_train, X_val, X_test, y_train, y_val, y_test
+
+        X, y = (
+            self.df.filter(items=['hour', 'passenger_count', 'fare_amount', 'total_amount', 'tip_amount', 'congestion_surcharge', 'airport_fee', 'tolls_amount', 'payment_type', 'mta_tax']),
+            self.df['trip_distance']
+        )
+
+        # Splits according to ratio of 80/10/10
+        self.X_train, self.X_val, self.X_test, self.y_train, self.y_val, self.y_test = train_validation_test_split(
+            X, y, 0.8, 0.10, 0.10
+        )
+
+        # Select the numerical columns
+        self.numerical_cols_X = X_train.select_dtypes(include=["int64", "float64"]).columns
+
+        # Numerical pipeline
+        self.num_pipeline = Pipeline([
+            ('scaler', MinMaxScaler())
+        ])
+
+        # Select the categorical columns
+        self.categorical_cols_X = X_train.select_dtypes(include=["object"]).columns
+
+        # Numerical pipeline
+        self.cat_pipeline = Pipeline([
+            ('encoding', OneHotEncoder())
+        ])
+
+        self.preprocessor = ColumnTransformer([
+            ('cat', cat_pipeline, categorical_cols_X),
+            ('num', num_pipeline, numerical_cols_X)
+        ])
+
         self.next(self.linear_model)
 
     @step
     def linear_model(self):
-        "Fit a single variable, linear model to the data."
+        "Fitting a single variable, linear model to the data."
         from sklearn.linear_model import LinearRegression
+        from sklearn.pipeline import Pipeline
+        from sklearn.compose import ColumnTransformer
 
-        # TODO: Play around with the model if you are feeling it.
-        self.model = LinearRegression()
+        # done: Play around with the model if you are feeling it.
+        # self.model = LinearRegression()
+        self.pipeline = Pipeline([
+            ('preprocessor', self.preprocessor),
+            ('model', LinearRegression())    
+        ])
 
         self.next(self.validate)
+
+    # @step ? branch flow
+    def other_model(self):
+        "Fitting multi variable, linear model to the data."
+        from sklearn.linear_model import LinearRegression
+        
+        pipeline = Pipeline([
+            ('preprocessor', self.preprocessor),
+            ('model', LinearRegression())    
+        ])
+
+        # pipeline.fit(X_train, y_train)
+        # y_predict = pipeline.predict(X_val)
+        # r2_score(y_predict, y_val).round(4)
+
 
     def gather_sibling_flow_run_results(self):
 
@@ -87,7 +193,9 @@ class TaxiFarePrediction(FlowSpec):
     @step
     def validate(self):
         from sklearn.model_selection import cross_val_score
-        self.scores = cross_val_score(self.model, self.X, self.y, cv=5)
+
+        self.scores = cross_val_score(self.pipeline, self.X_test, self.y_test, cv=5)
+
         current.card.append(Markdown("# Taxi Fare Prediction Results"))
         current.card.append(Table(self.gather_sibling_flow_run_results(), headers=["Pass/fail", "Run ID", "Created At", "R^2 score", "Stderr"]))
         self.next(self.end)
