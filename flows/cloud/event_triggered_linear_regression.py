@@ -155,7 +155,7 @@ class TaxiFarePrediction(FlowSpec):
         # self.model = LinearRegression()
         self.pipeline = Pipeline([
             ('preprocessor', self.preprocessor),
-            ('imputer', imputer)
+            ('imputer', imputer),
             ('model', HistGradientBoostingRegressor())    
         ])
 
