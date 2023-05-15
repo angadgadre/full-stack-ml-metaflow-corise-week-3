@@ -1,4 +1,4 @@
-from metaflow import FlowSpec, step, card, conda_base, current, Parameter, Flow, trigger
+from metaflow import FlowSpec, step, card, conda_base, current, Parameter, Flow, trigger, catch, retry, timeout
 from metaflow.cards import Markdown, Table, Image, Artifact
 
 URL = "https://outerbounds-datasets.s3.us-west-2.amazonaws.com/taxi/latest.parquet"
@@ -26,7 +26,17 @@ class TaxiFarePrediction(FlowSpec):
         # done: add some logic to filter out what you decide is bad data!
         # TIP: Don't spend too much time on this step for this project though, it practice it is a never-ending process.
         df.passenger_count > 0,
-        ~df.trip_distance.isnull()
+        # missing values removal
+        ~df.trip_distance.isnull(),
+        ~df.passenger_count.isnull(),
+        ~df.fare_amount.isnull(),
+        ~df.total_amount.isnull(),
+        ~df.tip_amount.isnull(),
+        ~df.congestion_surcharge.isnull(),
+        ~df.tolls_amount.isnull(),
+        ~df.payment_type.isnull(),
+        ~df.mta_tax.isnull(),
+        ~df.hour.isnull()
         ]
 
         for f in obviously_bad_data_filters:
@@ -109,7 +119,7 @@ class TaxiFarePrediction(FlowSpec):
         )
 
         # Select the numerical columns
-        self.numerical_cols_X = X_train.select_dtypes(include=["int64", "float64"]).columns
+        self.numerical_cols_X = self.X_train.select_dtypes(include=["int64", "float64"]).columns
 
         # Numerical pipeline
         self.num_pipeline = Pipeline([
@@ -117,7 +127,7 @@ class TaxiFarePrediction(FlowSpec):
         ])
 
         # Select the categorical columns
-        self.categorical_cols_X = X_train.select_dtypes(include=["object"]).columns
+        self.categorical_cols_X = self.X_train.select_dtypes(include=["object"]).columns
 
         # Numerical pipeline
         self.cat_pipeline = Pipeline([
@@ -125,8 +135,8 @@ class TaxiFarePrediction(FlowSpec):
         ])
 
         self.preprocessor = ColumnTransformer([
-            ('cat', cat_pipeline, categorical_cols_X),
-            ('num', num_pipeline, numerical_cols_X)
+            ('cat', self.cat_pipeline, self.categorical_cols_X),
+            ('num', self.num_pipeline, self.numerical_cols_X)
         ])
 
         self.next(self.linear_model)
@@ -135,6 +145,7 @@ class TaxiFarePrediction(FlowSpec):
     def linear_model(self):
         "Fitting a single variable, linear model to the data."
         from sklearn.linear_model import LinearRegression
+        from sklearn.ensemble import HistGradientBoostingRegressor
         from sklearn.pipeline import Pipeline
         from sklearn.compose import ColumnTransformer
 
@@ -142,7 +153,7 @@ class TaxiFarePrediction(FlowSpec):
         # self.model = LinearRegression()
         self.pipeline = Pipeline([
             ('preprocessor', self.preprocessor),
-            ('model', LinearRegression())    
+            ('model', HistGradientBoostingRegressor())    
         ])
 
         self.next(self.validate)
@@ -151,7 +162,8 @@ class TaxiFarePrediction(FlowSpec):
     def other_model(self):
         "Fitting multi variable, linear model to the data."
         from sklearn.linear_model import LinearRegression
-        
+        from sklearn.pipeline import Pipeline
+
         pipeline = Pipeline([
             ('preprocessor', self.preprocessor),
             ('model', LinearRegression())    
