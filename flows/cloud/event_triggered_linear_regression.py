@@ -53,7 +53,7 @@ class TaxiFarePrediction(FlowSpec):
         # datetime features: not doing at the moment    
         return _df
 
-    @catch(var="missing_data")
+    @catch(var="read_failure")
     @retry(times=2)
     @timeout(seconds=59)
     @step
