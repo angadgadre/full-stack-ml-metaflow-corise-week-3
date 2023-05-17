@@ -209,7 +209,7 @@ class TaxiFarePrediction(FlowSpec):
     def validate(self):
         from sklearn.model_selection import cross_val_score
 
-        self.scores = cross_val_score(self.pipeline, self.X_train, self.y_train, cv=5)
+        self.scores = cross_val_score(self.pipeline, self.X_test, self.y_test, cv=5)
 
         current.card.append(Markdown("# Taxi Fare Prediction Results"))
         current.card.append(Table(self.gather_sibling_flow_run_results(), headers=["Pass/fail", "Run ID", "Created At", "R^2 score", "Stderr"]))
