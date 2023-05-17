@@ -61,7 +61,7 @@ class TaxiFarePrediction(FlowSpec):
         # boolean features: none
 
         # datetime features: not doing at the moment    
-        return _df
+        return _df.dropna()
 
     @catch(var="read_failure")
     @retry(times=2)
@@ -162,15 +162,15 @@ class TaxiFarePrediction(FlowSpec):
         self.next(self.validate)
 
     # @step ? branch flow
-    def other_model(self):
-        "Fitting multi variable, linear model to the data."
-        from sklearn.linear_model import LinearRegression
-        from sklearn.pipeline import Pipeline
+    # def other_model(self):
+    #     "Fitting multi variable, linear model to the data."
+    #     from sklearn.linear_model import LinearRegression
+    #     from sklearn.pipeline import Pipeline
 
-        pipeline = Pipeline([
-            ('preprocessor', self.preprocessor),
-            ('model', LinearRegression())    
-        ])
+    #     pipeline = Pipeline([
+    #         ('preprocessor', self.preprocessor),
+    #         ('model', LinearRegression())    
+    #     ])
 
         # pipeline.fit(X_train, y_train)
         # y_predict = pipeline.predict(X_val)
